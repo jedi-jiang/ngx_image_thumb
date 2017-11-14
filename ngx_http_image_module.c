@@ -1,25 +1,26 @@
-/*
-* Copyright (C) Vampire
-*
-* {根据URL生成缩略图/添加水印}
-*
-* nginx.conf 配置值
-* image on/off 是否开启缩略图功能,默认关闭
-* image_backend on/off 是否开启镜像服务
-* image_backend_server 镜像服务器地址
-* image_output on/off 是否不生成图片而直接处理后输出 默认off
-* image_jpeg_quality 75 生成JPEG图片的质量 默认值75
-* image_water on/off 是否开启水印功能
-* image_water_type 0/1 水印类型 0:图片水印 1:文字水印
-* image_water_min 300 300 图片宽度 300 高度 300 的情况才添加水印
-* image_water_pos 0-9 水印位置 默认值9 0为随机位置,1为顶端居左,2为顶端居中,3为顶端居右,4为中部居左,5为中部居中,6为中部居右,7为底端居左,8为底端居中,9为底端居右
-* image_water_file 水印文件(jpg/png/gif),绝对路径或者相对路径的水印图片
-* image_water_transparent 水印透明度,默认20
-* image_water_text 水印文字 "Power By Vampire"
-* image_water_font_size 水印大小 默认 5
-* image_water_font;//文字水印字体文件路径
-* image_water_color 水印文字颜色,默认 #000000
-*/
+/* vim: set sw=4 ts=4 sts=4 et :
+ * Copyright (C) Vampire
+ *
+ * {根据URL生成缩略图/添加水印}
+ *
+ * nginx.conf 配置值
+ * image on/off 是否开启缩略图功能,默认关闭
+ * image_backend on/off 是否开启镜像服务
+ * image_backend_server 镜像服务器地址
+ * image_output on/off 是否不生成图片而直接处理后输出 默认off
+ * image_jpeg_quality 75 生成JPEG图片的质量 默认值75
+ * image_water on/off 是否开启水印功能
+ * image_water_type 0/1 水印类型 0:图片水印 1:文字水印
+ * image_water_min 300 300 图片宽度 300 高度 300 的情况才添加水印
+ * image_water_pos 0-9 水印位置 默认值9 0为随机位置,1为顶端居左,2为顶端居中,3为顶端居右,4为中部居左,5为中部居中,6为中部居右,7为底端居左,8为底端居中,9为底端居右
+ * image_water_file 水印文件(jpg/png/gif),绝对路径或者相对路径的水印图片
+ * image_water_transparent 水印透明度,默认20
+ * image_water_text 水印文字 "Power By Vampire"
+ * image_water_font_size 水印大小 默认 5
+ * image_water_font;//文字水印字体文件路径
+ * image_water_color 水印文字颜色,默认 #000000
+ * image_water_repeat_height 800 每800高度打一个水印
+ */
 
 #include <ngx_config.h>
 #include <ngx_core.h>
@@ -48,7 +49,7 @@
 
 typedef struct
 {
-    ngx_flag_t image_status;//是否打开图片处理
+	ngx_flag_t image_status;//是否打开图片处理
 	char * url;//请求URL地址
 	char request_dir[MAX_DIR_PATH_LEN];//URL目录
 	char * request_source;//URL源文件URL
@@ -62,8 +63,8 @@ typedef struct
 	char buffer[10][255];
 	gdImagePtr src_im;//原始图片GD对象
 	gdImagePtr dst_im;//目标图片GD对象
-    gdImagePtr w_im;//补白边图片GD对象
-    int w_margin;//是否对图片补白边
+	gdImagePtr w_im;//补白边图片GD对象
+	int w_margin;//是否对图片补白边
 	int img_size;//图片大小
 	int pcre_type;//图片正则匹配类型 0为新规则(test.jpg!c300x300.jpg) 1为旧规则(test.c300x300.jpg)
 	int header_type;//HTTP头部类型
@@ -80,7 +81,7 @@ typedef struct
 	int width;//目标图片宽度
 	int height;//目标图片高度
 	int dst_x;//目标图片X坐标
-    int dst_y;//目标图片Y坐标
+	int dst_y;//目标图片Y坐标
 	ngx_flag_t image_output;//是否不保存图片直接输出图片内容给客户端 默认off
 	int jpeg_quality;//JPEG图片质量 默认75
 	gdImagePtr water_im;//水印图片GD对象
@@ -98,6 +99,7 @@ typedef struct
 	int water_font_size;//水印文字大小
 	ngx_str_t water_font;//文字水印字体文件路径
 	ngx_str_t water_color;//水印文字颜色 (#0000000)
+	int water_repeat_height;//每重复该高度就打一个水印
 	ngx_http_request_t *request;//HTTP请求源
 } ngx_image_conf_t;
 
@@ -146,7 +148,7 @@ static int ngx_log(const char *format, ...);
 #define LOG_MODE_DISABLE	0				//不输出日志
 #define LOG_MODE_CONSOLE	1				//日志输出到控制台
 #define LOG_MODE_FILE		2				//日志输出到文件
-#define LOG_MODE 			LOG_MODE_DISABLE
+#define LOG_MODE			LOG_MODE_DISABLE
 
 #if LOG_MODE == LOG_MODE_FILE
 #define PRINT_LOG(level, log, ...)  ngx_log_error(level, log, 0, __VA_ARGS__) 
@@ -278,20 +280,28 @@ static ngx_command_t  ngx_http_image_commands[] =
 		offsetof(ngx_image_conf_t, jpeg_quality),
 		NULL
 	},
+	{
+		ngx_string("image_water_repeat_height"),
+		NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_ARGS_NUMBER,
+		ngx_conf_set_number_slot,
+		NGX_HTTP_LOC_CONF_OFFSET,
+		offsetof(ngx_image_conf_t, water_repeat_height),
+		NULL
+	},
 	ngx_null_command
 };
 
 
 static ngx_http_module_t  ngx_http_image_module_ctx =
 {
-	NULL,                          	/* preconfiguration */
-	NULL,                          	/* postconfiguration */
+	NULL,				/* preconfiguration */
+	NULL,				/* postconfiguration */
 
-	NULL,                          	/* create main configuration */
-	NULL,                          	/* init main configuration */
+	NULL,				/* create main configuration */
+	NULL,				/* init main configuration */
 
-	NULL,                          	/* create server configuration */
-	NULL,                          	/* merge server configuration */
+	NULL,				/* create server configuration */
+	NULL,				/* merge server configuration */
 
 	ngx_http_image_create_loc_conf, /* create location configuration */
 	ngx_http_image_merge_loc_conf   /* merge location configuration */
@@ -302,19 +312,19 @@ ngx_module_t  ngx_http_image_module =
 {
 	NGX_MODULE_V1,
 	&ngx_http_image_module_ctx,     /* module context */
-	ngx_http_image_commands,    	/* module directives */
-	NGX_HTTP_MODULE,               	/* module type */
-	NULL,                          	/* init master */
-	NULL,                          	/* init module */
-	NULL,                          	/* init process */
-	NULL,                          	/* init thread */
-	NULL,                          	/* exit thread */
-	NULL,                          	/* exit process */
-	NULL,                          	/* exit master */
+	ngx_http_image_commands,	/* module directives */
+	NGX_HTTP_MODULE,		/* module type */
+	NULL,				/* init master */
+	NULL,				/* init module */
+	NULL,				/* init process */
+	NULL,				/* init thread */
+	NULL,				/* exit thread */
+	NULL,				/* exit process */
+	NULL,				/* exit master */
 	NGX_MODULE_V1_PADDING
 };
 
-static int
+	static int
 ngx_log(const char *format, ...)
 {
 #if LOG_MODE == LOG_MODE_DISABLE
@@ -323,15 +333,15 @@ ngx_log(const char *format, ...)
 
 	int done; 
 	va_list arg;
-	
+
 	//打印临时日志
 	time_t rawtime;
 	struct tm * timeinfo;
 	time ( &rawtime );
 	timeinfo = localtime ( &rawtime );
 	printf ( "[INFO_Image] %04d.%02d.%02d %02d:%02d:%02d ", 
-		timeinfo->tm_year+1900, timeinfo->tm_mon+1, timeinfo->tm_mday, 
-		timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec );
+			timeinfo->tm_year+1900, timeinfo->tm_mon+1, timeinfo->tm_mday, 
+			timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec );
 
 	va_start (arg, format); 
 	done = vfprintf (stdout, format, arg);   
@@ -339,7 +349,7 @@ ngx_log(const char *format, ...)
 	return done; 
 };
 
-static void *
+	static void *
 ngx_http_image_create_loc_conf(ngx_conf_t *cf)
 {
 	PRINT_LOG(NGX_LOG_ERR, cf->log, "FUNC  ngx_http_image_create_loc_conf \n");
@@ -361,10 +371,11 @@ ngx_http_image_create_loc_conf(ngx_conf_t *cf)
 	conf->water_width_min = NGX_CONF_UNSET;
 	conf->water_height_min = NGX_CONF_UNSET;
 	conf->water_font_size = NGX_CONF_UNSET;
+    conf->water_repeat_height = NGX_CONF_UNSET;
 	return conf;
 }
 
-static char *
+	static char *
 ngx_http_image_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 {
 	PRINT_LOG(NGX_LOG_ERR, cf->log, "FUNC  ngx_http_image_merge_loc_conf \n");
@@ -383,6 +394,7 @@ ngx_http_image_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 	ngx_conf_merge_value(conf->water_font_size,prev->water_font_size,5);
 	ngx_conf_merge_str_value(conf->water_font,prev->water_font,"/usr/share/fonts/truetype/wqy/wqy-microhei.ttc");
 	ngx_conf_merge_str_value(conf->water_color,prev->water_color,"#000000");
+    ngx_conf_merge_value(conf->water_repeat_height,prev->water_repeat_height,0);
 	return NGX_CONF_OK;
 }
 
@@ -396,7 +408,7 @@ static ngx_int_t ngx_http_image_handler(ngx_http_request_t *r)
 	char                       request_uri[255];
 	int                        request_uri_len;
 	ngx_image_conf_t  *conf;
-	
+
 	conf = ngx_http_get_module_loc_conf(r, ngx_http_image_module);
 	conf->request = r;
 	if (!(r->method & (NGX_HTTP_GET|NGX_HTTP_HEAD)))
@@ -423,9 +435,9 @@ static ngx_int_t ngx_http_image_handler(ngx_http_request_t *r)
 	{
 		return NGX_HTTP_INTERNAL_SERVER_ERROR;
 	}
-	
+
 	PRINT_LOG(NGX_LOG_ERR, r->connection->log, "FUNC  ngx_http_image_handler, path = %s\n", 
-		(char *) path.data);
+			(char *) path.data);
 	if(file_exists((char*) path.data) == -1)
 	{
 		request_uri_len = strlen((char *)r->uri_start) - strlen((char *)r->uri_end);
@@ -436,7 +448,7 @@ static ngx_int_t ngx_http_image_handler(ngx_http_request_t *r)
 		conf->dest_file = (char *)path.data;
 		check_image_type(conf);//检查图片类型(根据后缀进行简单判断)
 		PRINT_LOG(NGX_LOG_ERR, r->connection->log, 
-			"FUNC  ngx_http_image_handler, request_uri = %s\n", request_uri);
+				"FUNC  ngx_http_image_handler, request_uri = %s\n", request_uri);
 		if( conf->dest_type > 0 )
 		{
 			if (parse_image_info(conf) == 0)//解析并处理请求的图片URL
@@ -456,7 +468,7 @@ static ngx_int_t ngx_http_image_handler(ngx_http_request_t *r)
 			}
 		}
 	}
-	
+
 	return NGX_DECLINED;
 }
 
@@ -519,7 +531,7 @@ char * ngx_conf_set_number_slot(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 	return NGX_CONF_OK;
 }
 
-static char *
+	static char *
 ngx_http_image(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
 	PRINT_LOG(NGX_LOG_ERR, cf->log, "FUNC  ngx_http_image \n");
@@ -551,22 +563,22 @@ static ngx_int_t output(ngx_http_request_t *r,void *conf,ngx_str_t type)
 	ngx_image_conf_t *info = conf;
 	ngx_http_complex_value_t  cv;
 
-    ngx_pool_cleanup_t *cln;
-    cln = ngx_pool_cleanup_add(r->pool, 0);
-    if (cln == NULL) {
+	ngx_pool_cleanup_t *cln;
+	cln = ngx_pool_cleanup_add(r->pool, 0);
+	if (cln == NULL) {
 		PRINT_LOG(NGX_LOG_ERR, r->connection->log, "FUNC  output 1\n");
 		gd_clean_data(info);
-        return status;
-    }
-	
+		return status;
+	}
+
 	PRINT_LOG(NGX_LOG_ERR, r->connection->log, "FUNC  output 2\n");
-    cln->handler = gd_clean_data;
-    cln->data = info;
+	cln->handler = gd_clean_data;
+	cln->data = info;
 	ngx_memzero(&cv, sizeof(ngx_http_complex_value_t));
 	cv.value.len = info->img_size;
 	cv.value.data = (u_char *)info->img_data;
-    status = ngx_http_send_response(r, NGX_HTTP_OK, &type, &cv);
-    return status;
+	status = ngx_http_send_response(r, NGX_HTTP_OK, &type, &cv);
+	return status;
 }
 
 static void thumb_to_string(void *conf)
@@ -575,19 +587,19 @@ static void thumb_to_string(void *conf)
 	PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, "FUNC  thumb_to_string \n");
 	switch(info->dest_type)
 	{
-        case NGX_IMAGE_PNG:
-            info->img_data = gdImagePngPtr(info->dst_im,&info->img_size);
-            break;
-        case NGX_IMAGE_GIF:
-            info->img_data = gdImageGifPtr(info->dst_im,&info->img_size);
-            break;
-        case NGX_IMAGE_JPEG:
-            info->img_data = gdImageJpegPtr(info->dst_im,&info->img_size,info->jpeg_quality);
-            break;
-    }
-	
+		case NGX_IMAGE_PNG:
+			info->img_data = gdImagePngPtr(info->dst_im,&info->img_size);
+			break;
+		case NGX_IMAGE_GIF:
+			info->img_data = gdImageGifPtr(info->dst_im,&info->img_size);
+			break;
+		case NGX_IMAGE_JPEG:
+			info->img_data = gdImageJpegPtr(info->dst_im,&info->img_size,info->jpeg_quality);
+			break;
+	}
+
 	PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
-		"FUNC  thumb_to_string, gdImageDestroy(info->dst_im), info->dst_im = %p\n",  info->dst_im);
+			"FUNC  thumb_to_string, gdImageDestroy(info->dst_im), info->dst_im = %p\n",  info->dst_im);
 	if (info->dst_im) 
 	{
 		gdImageDestroy(info->dst_im);
@@ -600,40 +612,40 @@ static void gd_clean_data(void *data){
 	if (info->img_data) 
 	{
 		PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
-			"FUNC  gd_clean_data, gdFree(info->img_data), info->img_data = %p, info->img_size = %d \n", 
-			info->img_data, info->img_size);
+				"FUNC  gd_clean_data, gdFree(info->img_data), info->img_data = %p, info->img_size = %d \n", 
+				info->img_data, info->img_size);
 		gdFree(info->img_data);
 		info->img_data = NULL;
 	}
-	
+
 	if (info->src_im) 
 	{
 		PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
-			"FUNC  gd_clean_data, gdImageDestroy(info->src_im), info->src_im = %p \n", info->src_im);
+				"FUNC  gd_clean_data, gdImageDestroy(info->src_im), info->src_im = %p \n", info->src_im);
 		gdImageDestroy(info->src_im);
 		info->src_im = NULL;
 	}
-	
+
 	if (info->dst_im) 
 	{
 		PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
-			"FUNC  gd_clean_data, gdImageDestroy(info->dst_im), info->dst_im = %p \n", info->dst_im);
+				"FUNC  gd_clean_data, gdImageDestroy(info->dst_im), info->dst_im = %p \n", info->dst_im);
 		gdImageDestroy(info->dst_im);
 		info->dst_im = NULL;
 	}
-	
+
 	if (info->w_im) 
 	{
 		PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
-			"FUNC  gd_clean_data, gdImageDestroy(info->w_im), info->w_im = %p \n", info->w_im);
+				"FUNC  gd_clean_data, gdImageDestroy(info->w_im), info->w_im = %p \n", info->w_im);
 		gdImageDestroy(info->w_im);
 		info->w_im = NULL;
 	}
-	
+
 	if (info->water_im) 
 	{
 		PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
-			"FUNC  gd_clean_data, gdImageDestroy(info->water_im), info->water_im = %p \n", info->water_im);
+				"FUNC  gd_clean_data, gdImageDestroy(info->water_im), info->water_im = %p \n", info->water_im);
 		gdImageDestroy(info->water_im);
 		info->water_im = NULL;
 	}
@@ -649,7 +661,7 @@ static void make_thumb(void *conf)
 	transparent = gdImageGetTransparent(info->src_im);
 	PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, "FUNC  make_thumb \n"); 
 	if (transparent == -1)
-    {
+	{
 		gdImageSaveAlpha(info->src_im,1);
 		gdImageColorTransparent(info->src_im, -1);
 		if(colors == 0)
@@ -661,9 +673,9 @@ static void make_thumb(void *conf)
 		{
 			gdImageTrueColorToPalette(info->dst_im,1,256);
 		}
-    }
-    if(info->w_margin == 1)
-    {
+	}
+	if(info->w_margin == 1)
+	{
 
 		info->w_im = gdImageCreateTrueColor(info->width,info->height);
 		gdImageFilledRectangle(info->w_im, 0, 0, info->width,info->height, gdImageColorAllocate(info->w_im, 255, 255, 255));
@@ -672,19 +684,19 @@ static void make_thumb(void *conf)
 			gdImageDestroy(info->dst_im);
 			info->dst_im = NULL;
 		}
-        info->dst_im = gdImageCreateTrueColor(info->max_width,info->max_height);
-        gdImageFilledRectangle(info->dst_im, 0, 0, info->max_width,info->max_height, gdImageColorAllocate(info->dst_im, 255, 255, 255));
+		info->dst_im = gdImageCreateTrueColor(info->max_width,info->max_height);
+		gdImageFilledRectangle(info->dst_im, 0, 0, info->max_width,info->max_height, gdImageColorAllocate(info->dst_im, 255, 255, 255));
 		gdImageCopyResampled(info->w_im, info->src_im, 0, 0, info->src_x, info->src_y,info->width, info->height, info->src_w,info->src_h);
 		gdImageCopyResampled(info->dst_im, info->w_im, info->dst_x,info->dst_y, 0, 0,info->width, info->height, info->width, info->height);
-        gdImageDestroy(info->w_im);
+		gdImageDestroy(info->w_im);
 		info->w_im = NULL;
-    }
-    else
-    {
-        gdImageCopyResampled(info->dst_im,info->src_im,info->dst_x,info->dst_y,info->src_x,info->src_y,info->width,info->height,info->src_w,info->src_h);
-    }
-	
-    gdImageDestroy(info->src_im);
+	}
+	else
+	{
+		gdImageCopyResampled(info->dst_im,info->src_im,info->dst_x,info->dst_y,info->src_x,info->src_y,info->width,info->height,info->src_w,info->src_h);
+	}
+
+	gdImageDestroy(info->src_im);
 	info->src_im = NULL;
 }
 static void water_mark(void *conf)
@@ -695,6 +707,9 @@ static void water_mark(void *conf)
 	int posX = 0;//X位置
 	int posY = 0;//Y位置
 	int water_color = 0;//文字水印GD颜色值
+    int repeat_h = 0;//重复水印的高度
+    int offsetY = 0;//Y轴偏移量
+    int height;//水印区域高度
 	char *water_text;//图片文字
 	char *water_font;//文字字体
 	char *water_color_text;//图片颜色值
@@ -713,11 +728,11 @@ static void water_mark(void *conf)
 				water_image_from(conf);//获取水印图片信息
 				if(info->water_im == NULL)//判断对象是否为空
 				{
-                    return;//水印文件异常
-                } else {
-                    water_w = info->water_im->sx;
-                    water_h = info->water_im->sy;
-                }
+					return;//水印文件异常
+				} else {
+					water_w = info->water_im->sx;
+					water_h = info->water_im->sy;
+				}
 			}
 			else
 			{
@@ -759,6 +774,10 @@ static void water_mark(void *conf)
 		{
 			return;//如果图片宽度/高度比水印宽度/高度宽度小
 		}
+
+        repeat_h = info->water_repeat_height;
+        if (repeat_h < 100)
+            repeat_h = 100;
 		if(info->water_pos < 1 ||info->water_pos > 9)
 		{
 			srand((unsigned)time(NULL));
@@ -766,67 +785,74 @@ static void water_mark(void *conf)
 			info->water_pos = 1+(int)(9.0*rand()/(RAND_MAX+1.0));
 			//info->water_pos = rand() % 9;
 		}
-		switch(info->water_pos)
-		{
-		case 1:
-			posX = 10;
-			posY = 15;
-			break;
-		case 2:
-			posX = (info->width - water_w) / 2;
-			posY = 15;
-			break;
-		case 3:
-			posX = info->width - water_w;
-			posY = 15;
-			break;
-		case 4:
-			posX = 0;
-			posY = (info->height - water_h) / 2;
-			break;
-		case 5:
-			posX = (info->width - water_w) / 2;
-			posY = (info->height - water_h) / 2;
-			break;
-		case 6:
-			posX = info->width - water_w;
-			posY = (info->height - water_h) / 2;
-			break;
-		case 7:
-			posX = 0;
-			posY = (info->height - water_h);
-			break;
-		case 8:
-			posX = (info->width - water_w) /2;
-			posY = info->width - water_h;
-			break;
-		case 9:
-			posX = info->width - water_w;
-			posY = info->height - water_h;
-			break;
-		default:
-			posX = info->width - water_w;
-			posY = info->height - water_h;
-			break;
-		}
-		if(info->water_type == 0)
-		{
-			gdImagePtr tmp_im;
-			tmp_im = NULL;
-			tmp_im = gdImageCreateTrueColor(water_w, water_h);
-			gdImageCopy(tmp_im, info->dst_im, 0, 0, posX, posY, water_w, water_h);
-			gdImageCopy(tmp_im, info->water_im, 0, 0, 0, 0, water_w, water_h);
-			gdImageCopyMerge(info->dst_im, tmp_im,posX, posY, 0, 0, water_w,water_h,info->water_transparent);
-			gdImageDestroy(tmp_im);
-            gdImageDestroy(info->water_im);
-			info->water_im = NULL;
-		}
-		else
-		{
-			gdImageAlphaBlending(info->dst_im,-1);
-			gdImageSaveAlpha(info->dst_im,0);
-			gdImageStringFT(info->dst_im,0,water_color,water_font,info->water_font_size, 0.0, posX, posY,water_text);
-		}
+        height = min(info->height, repeat_h);
+        for(;;)
+        {
+            switch(info->water_pos)
+            {
+                case 1:
+                    posX = 10;
+                    posY = 15;
+                    break;
+                case 2:
+                    posX = (info->width - water_w) / 2;
+                    posY = 15;
+                    break;
+                case 3:
+                    posX = info->width - water_w;
+                    posY = 15;
+                    break;
+                case 4:
+                    posX = 0;
+                    posY = (height - water_h) / 2;
+                    break;
+                case 5:
+                    posX = (info->width - water_w) / 2;
+                    posY = (height - water_h) / 2;
+                    break;
+                case 6:
+                    posX = info->width - water_w;
+                    posY = (height - water_h) / 2;
+                    break;
+                case 7:
+                    posX = 0;
+                    posY = (height - water_h);
+                    break;
+                case 8:
+                    posX = (info->width - water_w) /2;
+                    posY = info->width - water_h;
+                    break;
+                case 9:
+                    posX = info->width - water_w;
+                    posY = height - water_h;
+                    break;
+                default:
+                    posX = info->width - water_w;
+                    posY = height - water_h;
+                    break;
+            }
+            if(info->water_type == 0)
+            {
+                gdImagePtr tmp_im;
+                tmp_im = NULL;
+                tmp_im = gdImageCreateTrueColor(water_w, water_h);
+                gdImageCopy(tmp_im, info->dst_im, 0, 0, posX, offsetY+posY, water_w, water_h);
+                gdImageCopy(tmp_im, info->water_im, 0, 0, 0, 0, water_w, water_h);
+                gdImageCopyMerge(info->dst_im, tmp_im,posX, offsetY+posY, 0, 0, water_w,water_h,info->water_transparent);
+                gdImageDestroy(tmp_im);
+                gdImageDestroy(info->water_im);
+                info->water_im = NULL;
+            }
+            else
+            {
+                gdImageAlphaBlending(info->dst_im,-1);
+                gdImageSaveAlpha(info->dst_im,0);
+                gdImageStringFT(info->dst_im,0,water_color,water_font,info->water_font_size, 0.0, posX, offsetY+posY,water_text);
+            }
+        }
+        offsetY += repeat_h;
+        if (offsetY + repeat_h > info->height)
+            break;
 	}
 }
 
@@ -848,7 +874,7 @@ static int parse_image_info(void *conf)
 	old_pcre_free = pcre_free;
 	pcre_malloc = malloc;
 	pcre_free = free;
-	
+
 	PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, "FUNC  parse_image_info \n");
 	if(strchr(info->dest_file,'!'))
 	{
@@ -867,7 +893,7 @@ static int parse_image_info(void *conf)
 	{
 		expr_res = pcre_exec(expr,NULL,(const char *)info->dest_file,ngx_strlen(info->dest_file),0,0,ovector,30);
 		PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
-			"FUNC  parse_image_info, expr_res=%d\n", expr_res);
+				"FUNC  parse_image_info, expr_res=%d\n", expr_res);
 
 		//printf("parse_image_info dest_file=%s,%ld\n", (const char *)info->dest_file, ngx_strlen(info->dest_file));
 		if (expr_res > 5)
@@ -879,7 +905,7 @@ static int parse_image_info(void *conf)
 				sprintf(info->buffer[i],"%.*s",substring_length,substring_start);
 				//printf("parse_image_info buff[%d] : %d %s\n",i,substring_length,substring_start);
 			}
-			
+
 			info->source_file = info->buffer[1];
 			if(info->pcre_type == 1)
 			{
@@ -901,7 +927,7 @@ static int parse_image_info(void *conf)
 				/** combind request_filename **/
 				info->request_filename = info->buffer[2];
 			}
-			
+
 			dirname(info->buffer[1],info->local_dir);
 			info->dest_file = info->buffer[0];
 			info->m_type = info->buffer[3];
@@ -910,25 +936,25 @@ static int parse_image_info(void *conf)
 			info->max_width = (info->max_width > 2000) ? 2000 : (info->max_width);	//限定最大值
 			info->max_height = (info->max_height > 2000) ? 2000 : info->max_height;
 			PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
-				"FUNC  parse_image_info, info->dest_file= %s, info->local_dir= %s,  info->source_file = %s, "
-				"info->m_type = %s, info->max_width = %d, info->max_height = %d, info->request_filename = %s \n", 
-				info->dest_file, info->local_dir, info->source_file,
-				info->m_type, info->max_width, info->max_height, info->request_filename);
+					"FUNC  parse_image_info, info->dest_file= %s, info->local_dir= %s,  info->source_file = %s, "
+					"info->m_type = %s, info->max_width = %d, info->max_height = %d, info->request_filename = %s \n", 
+					info->dest_file, info->local_dir, info->source_file,
+					info->m_type, info->max_width, info->max_height, info->request_filename);
 			if((info->max_width < 0) || (info->max_height < 0)) 
 			{
-            	//如果图片小于0，则可以判断请求无效了
-                pcre_free(expr);
+				//如果图片小于0，则可以判断请求无效了
+				pcre_free(expr);
 				pcre_malloc = old_pcre_malloc;
 				pcre_free = old_pcre_free;
-                return -1;
-            }
+				return -1;
+			}
 			if(file_exists(info->source_file) == -1)//原图不存在
 			{
 				download(conf);
 			}
 			PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
-				"FUNC  parse_image_info, info->dest_file= %s, info->local_dir= %s, info->source_file = %s \n", 
-				info->dest_file, info->local_dir, info->source_file);
+					"FUNC  parse_image_info, info->dest_file= %s, info->local_dir= %s, info->source_file = %s \n", 
+					info->dest_file, info->local_dir, info->source_file);
 			if(file_exists(info->source_file) == 0)
 			{
 				pcre_state = calc_image_info(conf);
@@ -938,14 +964,14 @@ static int parse_image_info(void *conf)
 				return pcre_state;
 			}
 		}
-		
+
 		pcre_free(expr);
 		//恢复Nginx默认PCRE内存分配
 		pcre_malloc = old_pcre_malloc;
 		pcre_free = old_pcre_free;
 		//END
 	}
-	
+
 	return -1;
 }
 static int calc_image_info(void *conf)
@@ -954,10 +980,10 @@ static int calc_image_info(void *conf)
 	info->src_type = get_ext_header(info->source_file);//读取原图头部信息金星判断图片格式
 	if( info->src_type > 0)
 	{
-        info->w_margin = 0;//设置默认图片不补白边
+		info->w_margin = 0;//设置默认图片不补白边
 		info->src_im = NULL;
 		info->dst_im = NULL;
-        info->w_im = NULL;
+		info->w_im = NULL;
 		image_from(conf);//读取原图图片到GD对象
 		if(info->src_im != NULL)
 		{
@@ -966,8 +992,8 @@ static int calc_image_info(void *conf)
 			info->src_height = info->src_im->sy;
 			info->src_x = 0;
 			info->src_y = 0;
-            info->dst_x = 0;
-            info->dst_y = 0;
+			info->dst_x = 0;
+			info->dst_y = 0;
 			info->src_w = info->src_width;
 			info->src_h = info->src_height;
 			info->width = info->max_width;
@@ -1039,9 +1065,9 @@ static int calc_image_info(void *conf)
 					info->src_w=info->width * info->src_height / info->height;
 					info->src_x=(info->src_width - info->src_w)/2;
 				}
-                info->dst_x = (float)((float)(info->max_width - info->width)/2);
-                info->dst_y = (float)((float)(info->max_height - info->height)/2);
-                		
+				info->dst_x = (float)((float)(info->max_width - info->width)/2);
+				info->dst_y = (float)((float)(info->max_height - info->height)/2);
+
 			}
 			else
 			{
@@ -1049,11 +1075,11 @@ static int calc_image_info(void *conf)
 				info->src_im = NULL;
 				return -1;
 			}
-			
+
 			return 0;
 		}
 	}
-	
+
 	gdImageDestroy(info->src_im);
 	info->src_im = NULL;
 	return -1;
@@ -1149,28 +1175,28 @@ static void write_img(void * conf)
 {
 	ngx_image_conf_t *info = conf;
 	FILE * fp;
-	
+
 	PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, "FUNC  write_img \n");
 	if(info->img_data == NULL)
 	{
 		return;
 	}
-	
+
 	PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
-		"FUNC  write_img, info->dest_file = %s, info->img_data = %p, info->img_size = %d \n", 
-		info->dest_file, info->img_data, info->img_size);
+			"FUNC  write_img, info->dest_file = %s, info->img_data = %p, info->img_size = %d \n", 
+			info->dest_file, info->img_data, info->img_size);
 	fp = fopen(info->dest_file,"wb");
 	if(fp)
 	{
 		fwrite(info->img_data,sizeof(char),info->img_size,fp);
 		fclose(fp);
 		PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
-			"FUNC  write_img, info->img_data = %p, info->img_size = %d \n", info->img_data, info->img_size);
+				"FUNC  write_img, info->img_data = %p, info->img_size = %d \n", info->img_data, info->img_size);
 	}
-	
+
 	PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
-		"FUNC  write_img, gdFree(info->img_data), info->img_data = %p \n", info->img_data);
-    gdFree(info->img_data);
+			"FUNC  write_img, gdFree(info->img_data), info->img_data = %p \n", info->img_data);
+	gdFree(info->img_data);
 	info->img_data = NULL;
 }
 
@@ -1179,7 +1205,7 @@ static int read_img(char **filename,int * size,void ** buffer, ngx_http_request_
 	PRINT_LOG(NGX_LOG_ERR, request->connection->log, "FUNC  read_img, filename = %s \n", *filename);  
 	FILE *fp;
 	struct stat stat_buffer;
-	
+
 	fp = fopen(*filename, "rb");
 	if (fp)
 	{
@@ -1188,25 +1214,25 @@ static int read_img(char **filename,int * size,void ** buffer, ngx_http_request_
 		{
 			return -1;
 		}
-		
+
 		//*buffer = malloc(stat_buffer.st_size);
 		if (NULL == request) {
 			return -1;
 		}
-		
+
 		*buffer = ngx_palloc(request->pool, stat_buffer.st_size);
-        if (NULL == *buffer) {
+		if (NULL == *buffer) {
 			ngx_pfree(request->pool, *buffer);
-            return -1;
-        }
-		
+			return -1;
+		}
+
 		if(fread(*buffer,1,stat_buffer.st_size,fp))
 		{
 			*size = stat_buffer.st_size;
 			PRINT_LOG(NGX_LOG_ERR, request->connection->log, 
-				"FUNC  read_img, ngx_palloc, *buffer = %p, size = %d \n", *buffer, stat_buffer.st_size);
+					"FUNC  read_img, ngx_palloc, *buffer = %p, size = %d \n", *buffer, stat_buffer.st_size);
 		}
-	
+
 		fclose(fp);
 		return 0;
 	}
@@ -1218,7 +1244,7 @@ static void water_image_from(void * conf)
 	int size = 0;
 	void * buffer;
 	char * water_file;
-	
+
 	ngx_image_conf_t *info = conf;
 	info->water_im = NULL;
 	water_file = (char *)info->water_image.data;
@@ -1228,20 +1254,20 @@ static void water_image_from(void * conf)
 	{	
 		switch(info->water_im_type)
 		{
-		case NGX_IMAGE_GIF:
-			info->water_im = gdImageCreateFromGifPtr(size,buffer);
-			break;
-		case NGX_IMAGE_JPEG:
-			info->water_im = gdImageCreateFromJpegPtr(size,buffer);
-			break;
-		case NGX_IMAGE_PNG:
-			info->water_im = gdImageCreateFromPngPtr(size,buffer);
-			break;
+			case NGX_IMAGE_GIF:
+				info->water_im = gdImageCreateFromGifPtr(size,buffer);
+				break;
+			case NGX_IMAGE_JPEG:
+				info->water_im = gdImageCreateFromJpegPtr(size,buffer);
+				break;
+			case NGX_IMAGE_PNG:
+				info->water_im = gdImageCreateFromPngPtr(size,buffer);
+				break;
 		}
-		
+
 		//free(buffer);
 		PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
-			"FUNC  water_image_from, ngx_pfree, buffer = %p\n", buffer);
+				"FUNC  water_image_from, ngx_pfree, buffer = %p\n", buffer);
 		ngx_pfree(info->request->pool, buffer);
 		return;
 	}
@@ -1256,7 +1282,7 @@ static void image_from(void * conf)
 	{
 		gdImageDestroy(info->src_im);
 	}
-	
+
 	info->src_im = NULL;
 	PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, "FUNC  image_from \n");
 	if((read_img(&info->source_file,&size,&buffer, info->request)) == 0)
@@ -1273,10 +1299,10 @@ static void image_from(void * conf)
 				info->src_im = gdImageCreateFromPngPtr(size,buffer);
 				break;
 		}
-		
+
 		//free(buffer);
 		PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
-			"FUNC  image_from, ngx_pfree, buffer = %p\n", buffer);
+				"FUNC  image_from, ngx_pfree, buffer = %p\n", buffer);
 		ngx_pfree(info->request->pool, buffer);
 		return;
 	}
@@ -1325,8 +1351,8 @@ static void dirname(char *path,char *dirpath)
 	char dirname[MAX_DIR_PATH_LEN];
 	int len = 0;
 	len=strlen(path);
-    memset(dirname,0,sizeof(dirname));
-    for (;len>0;len--)
+	memset(dirname,0,sizeof(dirname));
+	for (;len>0;len--)
 	{ 
 		//从最后一个元素开始找.直到找到第一个'/'
 		if(path[len]=='/')
@@ -1335,8 +1361,8 @@ static void dirname(char *path,char *dirpath)
 			dirname[len] = '\0';
 			break;
 		}
-    }
-	
+	}
+
 	if (dirpath) {
 		strcpy(dirpath, dirname);
 	}
@@ -1387,7 +1413,7 @@ static void get_request_source(void * conf)
 static void download(void * conf)
 {
 	ngx_image_conf_t *info = conf;
-	
+
 	PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, "FUNC  download \n");
 	get_request_source(conf);//取得请求的URL的原始文件
 	if (get_header(info->request_source) == 0)
