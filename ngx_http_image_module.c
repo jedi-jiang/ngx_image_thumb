@@ -1002,9 +1002,17 @@ static int calc_image_info(void *conf)
             info->dst_y = 0;
             info->src_w = info->src_width;
             info->src_h = info->src_height;
-	    if (info->max_width == 0 || info->max_height == 0)
+	    if (info->max_width == 0 && info->max_height > 0)
 	    {
-                info->max_width = info->src_width;
+                info->max_width = (int) (info->src_width * (double)info->max_height / info->src_height);
+	    }
+	    else if (info->max_width > 0 && info->max_height == 0)
+	    {
+	        info->max_height = (int) (info->src_height * (double)info->max_width / info->src_width);
+	    }
+	    else
+	    {
+		info->max_width = info->src_width;
 		info->max_height = info->src_height;
 	    }
             info->width = info->max_width;
