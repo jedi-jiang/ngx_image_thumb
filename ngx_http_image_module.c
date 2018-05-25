@@ -1010,7 +1010,7 @@ static int calc_image_info(void *conf)
 	    {
 	        info->max_height = (int) (info->src_height * (double)info->max_width / info->src_width);
 	    }
-	    else
+	    else if (info->max_width <= 0 || info->max_height <= 0)
 	    {
 		info->max_width = info->src_width;
 		info->max_height = info->src_height;
