@@ -3,9 +3,10 @@ ngx_feature_name=
 ngx_feature_run=no
 ngx_feature_incs="#include <curl/curl.h>
 #include <gd.h>
+#include <magick/MagickCore.h>
 #include <pcre.h>"
-ngx_feature_path=
-ngx_feature_libs="-lcurl"
+ngx_feature_path="/usr/include/ImageMagick"
+ngx_feature_libs="-lcurl -lMagickCore"
 ngx_feature_test=
 
 ngx_addon_name=ngx_http_image_module
