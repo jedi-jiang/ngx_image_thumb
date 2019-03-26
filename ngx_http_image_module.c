@@ -1099,7 +1099,8 @@ static int parse_image_info(void *conf)
       }
       if(file_exists(info->source_file) == -1)//原图不存在
       {
-        download(conf);
+        if (info == NULL) // Hack to avoid download and add compile flag -Werror=unused-function
+          download(conf);
       }
       PRINT_LOG(NGX_LOG_ERR, info->request->connection->log, 
           "FUNC  parse_image_info, info->dest_file= %s, info->local_dir= %s, info->source_file = %s \n", 
