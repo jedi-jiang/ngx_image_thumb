@@ -17,3 +17,5 @@
 *.app
 .history
 .DS_Store
+
+BUILD
